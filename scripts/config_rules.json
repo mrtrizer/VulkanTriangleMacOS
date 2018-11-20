@@ -1,0 +1,17 @@
+{
+    "sdl2.lib": {
+        "name" : "Path to SDL2 libraries",
+        "type" : "path",
+        "path_filter" : "directory"
+    },
+    "sdl2.include": {
+        "name" : "Path to SDL2 includes",
+        "type" : "path",
+        "path_filter" : "directory"
+    },
+    "vulkan.vulkanPath": {
+        "name" : "Path to Vulkan SDK",
+        "type" : "path",
+        "path_filter" : "directory"
+    }
+}

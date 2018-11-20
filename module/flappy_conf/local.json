@@ -1,0 +1,9 @@
+{
+    "sdl2": {
+        "include":"/usr/local/include/SDL2",
+        "lib":"/usr/local/lib"
+    },
+    "vulkan": {
+        "sdkPath":"../../vulkan"
+    }
+}

@@ -1,0 +1,15 @@
+{
+    "name":"TestApp",
+    "modules": [
+    ],
+    "cxx":{
+        "header_dirs": [
+            "./src"
+        ],
+        "src_dirs": [
+            "./src"
+        ],
+        "flags": [
+        ]
+    }
+}
