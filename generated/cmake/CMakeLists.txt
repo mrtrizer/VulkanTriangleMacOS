@@ -56,12 +56,14 @@ PRIVATE
 
 # All preprocessor defenition from module configuration
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(TestApp PRIVATE  $<$<COMPILE_LANGUAGE:CXX>:--std=c++17>)
+    target_compile_options(TestApp PRIVATE  $<$<COMPILE_LANGUAGE:CXX>:--std=c++17> -fobjc-arc)
     find_library(COCOA_LIBRARY Cocoa)
     find_library(METAL_LIBRARY Metal)
     find_library(METAL_KIT_LIBRARY MetalKit)
     find_library(QUARTZ_CORE_LIBRARY QuartzCore)
-    target_link_libraries(TestApp PRIVATE ${COCOA_LIBRARY} ${METAL_LIBRARY} ${METAL_KIT_LIBRARY} ${QUARTZ_CORE_LIBRARY} -L/Users/deniszdorovtsov/.local/sdl2/lib -lsdl2 -L/Users/deniszdorovtsov/.local/vulkansdk/macOS/lib -lvulkan )
+    find_library(MOLTENVK_LIBRARY MoltenVK)
+    find_library(IOKIT_LIBRARY IOKit)
+    target_link_libraries(TestApp PRIVATE ${IOKIT_LIBRARY} ${COCOA_LIBRARY} ${METAL_LIBRARY} ${METAL_KIT_LIBRARY} ${QUARTZ_CORE_LIBRARY} -L/Users/deniszdorovtsov/.local/sdl2/lib -lsdl2 -L/Users/deniszdorovtsov/.local/vulkansdk/macOS/lib -lvulkan )
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     target_compile_options(TestApp PRIVATE  --std=c++17)
     target_link_libraries(TestApp PRIVATE -L/Users/deniszdorovtsov/.local/sdl2/lib -lsdl2 -L/Users/deniszdorovtsov/.local/vulkansdk/macOS/lib -lvulkan )

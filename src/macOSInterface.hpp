@@ -6,9 +6,9 @@ extern "C" {
 
 const void* initMetal(const void* pView);
 
-void createMacOsApp ();
+void* createMacOsApp ();
 
-void runMacOsApp();
+void runMacOsApp(void*, void (*callback_)(void*), void* userDataPtr);
 
 #ifdef __cplusplus
 }
