@@ -16,6 +16,9 @@
 @interface DemoView : NSView
 @end
 
+@interface MyWindowDelegate : NSObject <NSWindowDelegate>
+@end
+
 void createMacOsApp (void (*initHandler)(void*, void*), void (*updateHandler)(void*)) {
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
@@ -29,6 +32,8 @@ void createMacOsApp (void (*initHandler)(void*, void*), void (*updateHandler)(vo
     [window cascadeTopLeftFromPoint:NSMakePoint(20,20)];
     [window setTitle: applicationName];
     [window makeKeyAndOrderFront:nil];
+    MyWindowDelegate* windowDelegate = [MyWindowDelegate alloc];
+    [window setDelegate:windowDelegate];
     [NSApp activateIgnoringOtherApps:YES];
     DemoViewController* controller = [[DemoViewController alloc] initWithNibName : nil bundle: nil];
     controller.initHandler = initHandler;
@@ -109,5 +114,13 @@ static CVReturn DisplayLinkCallback(CVDisplayLinkRef displayLink,
         layer.contentsScale = MIN(viewScale.width, viewScale.height);
         return layer;
     }
+
+@end
+
+@implementation MyWindowDelegate
+
+- (void)windowWillClose:(NSNotification *)notification {
+    [NSApp terminate:self];
+}
 
 @end
