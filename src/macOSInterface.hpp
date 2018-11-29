@@ -4,11 +4,11 @@
 extern "C" {
 #endif
 
-const void* initMetal(const void* pView);
+void createMacOsApp (void (*initHandler)(void*, void*), void (*updateHandler)(void*));
 
-void* createMacOsApp ();
+void setUserData(void* pWindow, void* userDataPtr);
 
-void runMacOsApp(void*, void (*callback_)(void*), void* userDataPtr);
+void initVulkan(void* controller, void* caMetalLayer);
 
 #ifdef __cplusplus
 }

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 4.4.1, 2018-11-25T13:24:35. -->
+<!-- Written by QtCreator 4.4.1, 2018-11-29T23:48:26. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
@@ -344,8 +344,8 @@
     <value type="QString" key="CMakeProjectManager.CMakeRunConfiguration.UserWorkingDirectory.default">/Users/deniszdorovtsov/Projects/VulkanExperiments/TestApp/generated/build-cmake-Desktop_Qt_5_9_1_clang_64bit-Debug</value>
     <value type="int" key="PE.EnvironmentAspect.Base">2</value>
     <valuelist type="QVariantList" key="PE.EnvironmentAspect.Changes">
-     <value type="QString">VK_LAYER_PATH=/Users/deniszdorovtsov/Projects/VulkanExperiments/vulkansdk-macos-1.1.85.0/macOS/etc/vulkan/explicit_layer.d</value>
-     <value type="QString">VK_ICD_FILENAMES=/Users/deniszdorovtsov/Projects/VulkanExperiments/vulkansdk-macos-1.1.85.0/macOS/etc/vulkan/icd.d/MoltenVK_icd.json</value>
+     <value type="QString">VK_LAYER_PATH=/Users/deniszdorovtsov/.local/vulkansdk/macOS/etc/vulkan/explicit_layer.d</value>
+     <value type="QString">VK_ICD_FILENAMES=/Users/deniszdorovtsov/.local/vulkansdk/macOS/etc/vulkan/icd.d/MoltenVK_icd.json</value>
      <value type="QString">LD_LIBRARY_PATH=/Users/deniszdorovtsov/.local/sdl2</value>
     </valuelist>
     <value type="QString" key="ProjectExplorer.ProjectConfiguration.DefaultDisplayName">TestApp</value>

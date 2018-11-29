@@ -270,13 +270,17 @@ VkDevice createVkLogicalDevice(VkPhysicalDevice physicalDevice,
     // Features
     VkPhysicalDeviceFeatures deviceFeatures = {};
 
+    // Extensions
+    std::vector<const char*> extensionNames = {"VK_KHR_swapchain"};
+
     // Device
     VkDeviceCreateInfo createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
     createInfo.queueCreateInfoCount = queueCreateInfos.size();
     createInfo.pEnabledFeatures = &deviceFeatures;
-    createInfo.enabledExtensionCount = 0;
+    createInfo.enabledExtensionCount = extensionNames.size();
+    createInfo.ppEnabledExtensionNames = extensionNames.data();
     createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayerNames.size());
     createInfo.ppEnabledLayerNames = validationLayerNames.data();
 
@@ -292,14 +296,14 @@ VkQueue getVkQueue(VkDevice device, unsigned family, unsigned index) {
     return queue;
 }
 
-VkSurfaceKHR createVkSDLSurface(void* nsWindow, VkInstance instance) {
+VkSurfaceKHR createVkSDLSurface(void* caMetalLayer, VkInstance instance) {
     VkSurfaceKHR surface;
 
     VkMacOSSurfaceCreateInfoMVK createInfo;
     createInfo.sType = VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK;
     createInfo.pNext = NULL;
     createInfo.flags = 0;
-    createInfo.pView = initMetal(nsWindow);
+    createInfo.pView = caMetalLayer;
 
     if (vkCreateMacOSSurfaceMVK(instance, &createInfo, nullptr, &surface) != VK_SUCCESS)
         throw std::runtime_error("Can't create macos surface");
@@ -463,6 +467,7 @@ VkPipelineLayout createPipelineLayout(VkDevice device) {
 
 VkRenderPass createRenderPass(VkDevice device, VkFormat imageFormat) {
     VkAttachmentDescription colorAttachment = {};
+    colorAttachment.flags = 0;
     colorAttachment.format = imageFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -646,7 +651,7 @@ std::vector<VkImageView> createSwapchainImageViews( VkDevice logicalDevice,
                                                     const std::vector<VkImage>& swapchainImages,
                                                     VkFormat format)
 {
-    std::vector<VkImageView> swapChainImageViews(swapchainImages.size());
+    std::vector<VkImageView> swapChainImageViews;
 
     for (auto image: swapchainImages) {
         VkImageViewCreateInfo createInfo = {};
@@ -776,14 +781,16 @@ VkSemaphore createSemaphore(VkDevice device) {
 struct UpdateInfo {
     VkDevice device;
     VkSwapchainKHR swapchain;
-    const std::vector<VkCommandBuffer>& commandBuffers;
+    std::vector<VkCommandBuffer> commandBuffers;
     VkSemaphore imageAvailableSemaphore;
     VkSemaphore renderFinishedSemaphore;
     VkQueue graphicsQueue;
     VkQueue presentQueue;
 };
 
-void update(const UpdateInfo& updateInfo) {
+void update(void* userDataPtr) {
+    auto updateInfo = *static_cast<UpdateInfo*>(userDataPtr);
+
     uint32_t imageIndex;
     vkAcquireNextImageKHR(updateInfo.device,
                           updateInfo.swapchain,
@@ -821,17 +828,16 @@ void update(const UpdateInfo& updateInfo) {
     vkQueuePresentKHR(updateInfo.presentQueue, &presentInfo);
 }
 
+UpdateInfo updateInfo;
 
-int main(int argc, char* argv[]) {
-
+void initVulkan(void* controller, void* caMetalLayer) {
     const std::vector<const char*> requiredValidationLayerNames = {
-    //    "MoltenVK"
-    //    "VK_LAYER_LUNARG_standard_validation",
-    //    "VK_LAYER_LUNARG_parameter_validation",
-    //    "VK_LAYER_LUNARG_core_validation",
-    //    "VK_LAYER_LUNARG_object_tracker",
-    //    "VK_LAYER_GOOGLE_threading",
-    //    "VK_LAYER_GOOGLE_unique_objects"
+        "VK_LAYER_LUNARG_standard_validation",
+        "VK_LAYER_LUNARG_parameter_validation",
+        "VK_LAYER_LUNARG_core_validation",
+        "VK_LAYER_LUNARG_object_tracker",
+        "VK_LAYER_GOOGLE_threading",
+        "VK_LAYER_GOOGLE_unique_objects"
     };
 
     std::cout << __has_feature(objc_arc) << std::endl;
@@ -850,7 +856,6 @@ int main(int argc, char* argv[]) {
     for (auto requiredExtensionName : requiredInstanceExtensionNames)
         std::cout << '\t' << requiredExtensionName << std::endl;
 
-    void* window;
     VkInstance instance;
 
     // Create VK instance
@@ -858,11 +863,9 @@ int main(int argc, char* argv[]) {
 
     auto debugMessenger = createVkDebugUtilsMessenger(instance, debugCallback);
 
-    window = createMacOsApp();
+    auto surface = createVkSDLSurface(caMetalLayer, instance);
 
-    auto surface = createVkSDLSurface(window, instance);
-
-    const std::vector<const char*> deviceRequiredExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    const std::vector<const char*> deviceRequiredExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SURFACE_EXTENSION_NAME};
 
     auto physicalDevice = findVkPhysicalDevice(instance, surface, deviceRequiredExtensions);
 
@@ -880,6 +883,7 @@ int main(int argc, char* argv[]) {
         .presentMode = chooseSwapPresentMode(swapChainSupport.presentModes),
         .extent = chooseSwapExtent(swapChainSupport.capabilities),
         .imageCount = selectImageCount(swapChainSupport),
+        .transform = swapChainSupport.capabilities.currentTransform,
         .queueFamilies = queueFamilies
     };
     auto swapchain = createSwapchain(physicalDevice, logicalDevice, surface, swapchainSettings);
@@ -903,7 +907,7 @@ int main(int argc, char* argv[]) {
     auto imageAvailableSemaphore = createSemaphore(logicalDevice);
     auto renderFinishedSemaphore = createSemaphore(logicalDevice);
 
-    UpdateInfo updateInfo {
+    updateInfo = UpdateInfo {
         .device = logicalDevice,
         .swapchain = swapchain,
         .commandBuffers = commandBuffers,
@@ -913,31 +917,35 @@ int main(int argc, char* argv[]) {
         .presentQueue = getVkQueue(logicalDevice, queueFamilies.presentFamily, 0),
     };
 
-    // The window is open: could enter program loop here (see SDL_PollEvent())
-    runMacOsApp(window, [](void* userDataPtr) { update(*static_cast<UpdateInfo*>(userDataPtr)); }, &updateInfo);
+    setUserData(controller, &updateInfo);
+}
 
-    vkDeviceWaitIdle(logicalDevice);
+int main(int argc, char* argv[]) {
 
-    // Vulkan cleanup
-    {
-        vkDestroySemaphore(logicalDevice, renderFinishedSemaphore, nullptr);
-        vkDestroySemaphore(logicalDevice, imageAvailableSemaphore, nullptr);
-        vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
-        for (auto framebuffer : framebuffers) {
-                vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
-        }
-        vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
-        vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
-        vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
-        for (auto imageView : swapchainImageViews) {
-            vkDestroyImageView(logicalDevice, imageView, nullptr);
-        }
-        destroyVkDebugUtilsMessenger(instance, debugMessenger);
-        vkDestroySwapchainKHR(logicalDevice, swapchain, nullptr);
-        vkDestroyDevice(logicalDevice, nullptr);
-        vkDestroySurfaceKHR(instance, surface, nullptr);
-        vkDestroyInstance(instance, nullptr);
-    }
+    createMacOsApp(initVulkan, update);
+
+//    vkDeviceWaitIdle(logicalDevice);
+
+//    // Vulkan cleanup
+//    {
+//        vkDestroySemaphore(logicalDevice, renderFinishedSemaphore, nullptr);
+//        vkDestroySemaphore(logicalDevice, imageAvailableSemaphore, nullptr);
+//        vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
+//        for (auto framebuffer : framebuffers) {
+//                vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
+//        }
+//        vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
+//        vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
+//        vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
+//        for (auto imageView : swapchainImageViews) {
+//            vkDestroyImageView(logicalDevice, imageView, nullptr);
+//        }
+//        destroyVkDebugUtilsMessenger(instance, debugMessenger);
+//        vkDestroySwapchainKHR(logicalDevice, swapchain, nullptr);
+//        vkDestroyDevice(logicalDevice, nullptr);
+//        vkDestroySurfaceKHR(instance, surface, nullptr);
+//        vkDestroyInstance(instance, nullptr);
+//    }
 
     return EXIT_SUCCESS;
 }
