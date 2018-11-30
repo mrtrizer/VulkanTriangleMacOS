@@ -1,7 +1,3 @@
-#include <SDL.h>
-#include <SDL_vulkan.h>
-#include <SDL_system.h>
-#include <SDL_syswm.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_macos.h>
 #include <iostream>
@@ -33,14 +29,6 @@ void ensureRequiredExtensionsPresented(const std::vector<VkExtensionProperties>&
         }
         throw std::runtime_error(ss.str());
     }
-}
-
-std::vector<const char*> getRequiredSDLExtensionNames(SDL_Window* window) {
-    unsigned requiredExtensionCount = 0;
-    SDL_Vulkan_GetInstanceExtensions(window, &requiredExtensionCount, nullptr);
-    std::vector<const char*> requiredExtensionNames(requiredExtensionCount);
-    SDL_Vulkan_GetInstanceExtensions(window, &requiredExtensionCount, requiredExtensionNames.data());
-    return requiredExtensionNames;
 }
 
 std::vector<VkExtensionProperties> getVkExtensions() {
@@ -253,7 +241,8 @@ VkPhysicalDevice findVkPhysicalDevice(VkInstance instance, VkSurfaceKHR surface,
 
 VkDevice createVkLogicalDevice(VkPhysicalDevice physicalDevice,
                                QueueFamilyIndices queueFamilies,
-                               const std::vector<const char*>& validationLayerNames) {
+                               const std::vector<const char*>& validationLayerNames,
+                               const std::vector<const char*>& extensionNames) {
     // Common for all queues
     float queuePriority = 1.0f;
 
@@ -269,9 +258,6 @@ VkDevice createVkLogicalDevice(VkPhysicalDevice physicalDevice,
 
     // Features
     VkPhysicalDeviceFeatures deviceFeatures = {};
-
-    // Extensions
-    std::vector<const char*> extensionNames = {"VK_KHR_swapchain"};
 
     // Device
     VkDeviceCreateInfo createInfo = {};
@@ -874,7 +860,7 @@ void initVulkan(void* controller, void* caMetalLayer) {
     std::cout << "Graphics family index: " << queueFamilies.graphicsFamily << std::endl;
     std::cout << "Present family index: " << queueFamilies.presentFamily << std::endl;
 
-    auto logicalDevice = createVkLogicalDevice(physicalDevice, queueFamilies, requiredValidationLayerNames);
+    auto logicalDevice = createVkLogicalDevice(physicalDevice, queueFamilies, requiredValidationLayerNames, deviceRequiredExtensions);
 
     SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice, surface);
 
@@ -946,6 +932,10 @@ int main(int argc, char* argv[]) {
 //        vkDestroySurfaceKHR(instance, surface, nullptr);
 //        vkDestroyInstance(instance, nullptr);
 //    }
+
+    while (true) {
+
+    }
 
     return EXIT_SUCCESS;
 }
