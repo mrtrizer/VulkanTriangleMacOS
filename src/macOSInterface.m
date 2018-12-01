@@ -9,7 +9,7 @@
 @interface DemoViewController : NSViewController
     @property void *userDataPtr;
     @property void (*updateHandler)();
-    @property void (*initHandler)(void* controller, void* caMetalLayer);
+    -(void)setUserData: (void*) userData;
 @end
 
 /** The Metal-compatibile view for the demo Storyboard. */
@@ -19,7 +19,7 @@
 @interface MyWindowDelegate : NSObject <NSWindowDelegate>
 @end
 
-void createMacOsApp (void (*initHandler)(void*, void*), void (*updateHandler)(void*)) {
+MacOsApp createMacOsApp (void (*updateHandler)(void*)) {
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
     id applicationName = [[NSProcessInfo processInfo] processName];
@@ -36,14 +36,39 @@ void createMacOsApp (void (*initHandler)(void*, void*), void (*updateHandler)(vo
     [window setDelegate:windowDelegate];
     [NSApp activateIgnoringOtherApps:YES];
     DemoViewController* controller = [[DemoViewController alloc] initWithNibName : nil bundle: nil];
-    controller.initHandler = initHandler;
     controller.updateHandler = updateHandler;
+    // Setting contentViewControlelr initiates DemoView creating and [DemoViewController viewDidLoad]
     window.contentViewController = controller;
-    [NSApp run];
+    // Next lines are executed when DemoView is fully initialized along with CAMetalLayer
+    MacOsApp macOsApp;
+    macOsApp.nsViewController = (__bridge void*) controller;
+    macOsApp.caMetalLayer = (__bridge void*) window.contentView.layer;
+    macOsApp.nsWindow = (__bridge void*) window;
+    return macOsApp;
 }
 
-void setUserData(void* controller, void* userDataPtr) {
-    ((__bridge DemoViewController*)controller).userDataPtr = userDataPtr;
+void setUserData(const MacOsApp* macOsApp, void* userDataPtr) {
+    [((__bridge DemoViewController*)macOsApp->nsViewController) setUserData : userDataPtr];
+}
+
+// Using of global flags is bad design. But I don't know how to pass an event to
+// following do-while cycle better way and have to time and will to sort this out.
+// I feel like MyWindowDelegate should emit some event about closing the window,
+// or may be I evendon't need the MyWindowDelegate class and I could just
+// catch this event in main event loop. Honestly I don't really know. :)
+bool run = true;
+
+void runMacOsApp(MacOsApp* macOsApp) {
+    (void)macOsApp;
+    do {
+        NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
+                                            untilDate:[NSDate distantFuture]
+                                               inMode:NSDefaultRunLoopMode
+                                              dequeue:YES];
+        [NSApp sendEvent:event];
+        [NSApp updateWindows];
+    } while (run);
+    [(__bridge NSWindow*)macOsApp->nsWindow close];
 }
 
 typedef struct UpdateClosure {
@@ -70,14 +95,12 @@ static CVReturn DisplayLinkCallback(CVDisplayLinkRef displayLink,
 
     @synthesize userDataPtr;
     @synthesize updateHandler;
-    @synthesize initHandler;
 
     -(void)loadView {
         self.view = [[DemoView alloc] initWithFrame:NSMakeRect(0, 0, 640, 640)];
     }
 
     -(void) dealloc {
-        //demo_cleanup(&demo);
         CVDisplayLinkRelease(_displayLink);
     }
 
@@ -86,9 +109,6 @@ static CVReturn DisplayLinkCallback(CVDisplayLinkRef displayLink,
         [super viewDidLoad];
 
         self.view.wantsLayer = YES;		// Back the view with a layer created by the makeBackingLayer method.
-        const char* arg = "cube";
-        if (initHandler != nil)
-            initHandler((__bridge void*)self, (__bridge void*)self.view);
 
         CVDisplayLinkCreateWithActiveCGDisplays(&_displayLink);
         updateClosure.func = updateHandler;
@@ -97,6 +117,13 @@ static CVReturn DisplayLinkCallback(CVDisplayLinkRef displayLink,
         CVDisplayLinkStart(_displayLink);
     }
 
+    -(void)setUserData: (void*) userDataPtr_ {
+        self.userDataPtr = userDataPtr_;
+        if (_displayLink != nil) {
+            updateClosure.userDataPtr = userDataPtr;
+            CVDisplayLinkSetOutputCallback(_displayLink, &DisplayLinkCallback, &updateClosure);
+        }
+    }
 @end
 
 @implementation DemoView
@@ -120,7 +147,7 @@ static CVReturn DisplayLinkCallback(CVDisplayLinkRef displayLink,
 @implementation MyWindowDelegate
 
 - (void)windowWillClose:(NSNotification *)notification {
-    [NSApp terminate:self];
+    run = false;
 }
 
 @end

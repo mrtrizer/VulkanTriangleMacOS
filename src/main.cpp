@@ -402,7 +402,7 @@ std::vector<char> readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) {
-        throw std::runtime_error("failed to open file!");
+        throw std::runtime_error("Failed to open file " + filename);
     }
 
     size_t fileSize = (size_t) file.tellg();
@@ -775,6 +775,8 @@ struct UpdateInfo {
 };
 
 void update(void* userDataPtr) {
+    if (userDataPtr == nullptr)
+        return;
     auto updateInfo = *static_cast<UpdateInfo*>(userDataPtr);
 
     uint32_t imageIndex;
@@ -814,9 +816,8 @@ void update(void* userDataPtr) {
     vkQueuePresentKHR(updateInfo.presentQueue, &presentInfo);
 }
 
-UpdateInfo updateInfo;
+int main(int argc, char* argv[]) {
 
-void initVulkan(void* controller, void* caMetalLayer) {
     const std::vector<const char*> requiredValidationLayerNames = {
         "VK_LAYER_LUNARG_standard_validation",
         "VK_LAYER_LUNARG_parameter_validation",
@@ -825,45 +826,47 @@ void initVulkan(void* controller, void* caMetalLayer) {
         "VK_LAYER_GOOGLE_threading",
         "VK_LAYER_GOOGLE_unique_objects"
     };
-
+    
     std::cout << __has_feature(objc_arc) << std::endl;
-
+    
     auto validationLayers = getVkValidationLayers();
     std::cout << "Validation layers:" << std::endl;
     for (auto validationLayer : validationLayers)
         std::cout << '\t' << validationLayer.layerName << std::endl;
-
+    
     if (!validationLayersAvaliable(getVkValidationLayers(), requiredValidationLayerNames))
         throw std::runtime_error("Validation layer is not avaliable");
-
+    
     auto requiredInstanceExtensionNames = std::vector<const char*>{ "VK_KHR_surface", "VK_MVK_macos_surface" };
     requiredInstanceExtensionNames.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     std::cout << "Required extensions for instance:" << std::endl;
     for (auto requiredExtensionName : requiredInstanceExtensionNames)
         std::cout << '\t' << requiredExtensionName << std::endl;
-
+    
     VkInstance instance;
-
+    
     // Create VK instance
     instance = createVkInstance(requiredInstanceExtensionNames, requiredValidationLayerNames);
-
+    
     auto debugMessenger = createVkDebugUtilsMessenger(instance, debugCallback);
-
-    auto surface = createVkSDLSurface(caMetalLayer, instance);
-
+    
+    auto macOsApp = createMacOsApp(update);
+    
+    auto surface = createVkSDLSurface(macOsApp.caMetalLayer, instance);
+    
     const std::vector<const char*> deviceRequiredExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SURFACE_EXTENSION_NAME};
-
+    
     auto physicalDevice = findVkPhysicalDevice(instance, surface, deviceRequiredExtensions);
-
+    
     auto queueFamilies = findQueueFamilies(physicalDevice, surface);
-
+    
     std::cout << "Graphics family index: " << queueFamilies.graphicsFamily << std::endl;
     std::cout << "Present family index: " << queueFamilies.presentFamily << std::endl;
-
+    
     auto logicalDevice = createVkLogicalDevice(physicalDevice, queueFamilies, requiredValidationLayerNames, deviceRequiredExtensions);
-
+    
     SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice, surface);
-
+    
     SwapchainSettings swapchainSettings {
         .surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats),
         .presentMode = chooseSwapPresentMode(swapChainSupport.presentModes),
@@ -873,27 +876,27 @@ void initVulkan(void* controller, void* caMetalLayer) {
         .queueFamilies = queueFamilies
     };
     auto swapchain = createSwapchain(physicalDevice, logicalDevice, surface, swapchainSettings);
-
+    
     auto swapchainImages = getSwapchainImages(logicalDevice, swapchain);
-
+    
     auto swapchainImageViews = createSwapchainImageViews(logicalDevice, swapchainImages, swapchainSettings.surfaceFormat.format);
-
+    
     auto pipelineLayout = createPipelineLayout(logicalDevice);
-
+    
     auto renderPass = createRenderPass(logicalDevice, swapchainSettings.surfaceFormat.format);
-
+    
     auto framebuffers = createFramebuffers(logicalDevice, renderPass, swapchainImageViews, swapchainSettings.extent);
-
+    
     auto graphicsPipeline = createGraphicsPipeline(logicalDevice, pipelineLayout, renderPass, swapchainSettings.extent);
-
+    
     auto commandPool = createCommandPool(logicalDevice, queueFamilies);
-
+    
     auto commandBuffers = createCommandBuffers(logicalDevice, commandPool, renderPass, graphicsPipeline, framebuffers, swapchainSettings.extent);
-
+    
     auto imageAvailableSemaphore = createSemaphore(logicalDevice);
     auto renderFinishedSemaphore = createSemaphore(logicalDevice);
-
-    updateInfo = UpdateInfo {
+    
+    UpdateInfo updateInfo = UpdateInfo {
         .device = logicalDevice,
         .swapchain = swapchain,
         .commandBuffers = commandBuffers,
@@ -902,40 +905,37 @@ void initVulkan(void* controller, void* caMetalLayer) {
         .graphicsQueue = getVkQueue(logicalDevice, queueFamilies.graphicsFamily, 0),
         .presentQueue = getVkQueue(logicalDevice, queueFamilies.presentFamily, 0),
     };
+    
+    setUserData(&macOsApp, &updateInfo);
+    
+    runMacOsApp(&macOsApp);
+    
+    setUserData(&macOsApp, nullptr);
 
-    setUserData(controller, &updateInfo);
-}
+    vkDeviceWaitIdle(logicalDevice);
 
-int main(int argc, char* argv[]) {
-
-    createMacOsApp(initVulkan, update);
-
-//    vkDeviceWaitIdle(logicalDevice);
-
-//    // Vulkan cleanup
-//    {
-//        vkDestroySemaphore(logicalDevice, renderFinishedSemaphore, nullptr);
-//        vkDestroySemaphore(logicalDevice, imageAvailableSemaphore, nullptr);
-//        vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
-//        for (auto framebuffer : framebuffers) {
-//                vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
-//        }
-//        vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
-//        vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
-//        vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
-//        for (auto imageView : swapchainImageViews) {
-//            vkDestroyImageView(logicalDevice, imageView, nullptr);
-//        }
-//        destroyVkDebugUtilsMessenger(instance, debugMessenger);
-//        vkDestroySwapchainKHR(logicalDevice, swapchain, nullptr);
-//        vkDestroyDevice(logicalDevice, nullptr);
-//        vkDestroySurfaceKHR(instance, surface, nullptr);
-//        vkDestroyInstance(instance, nullptr);
-//    }
-
-    while (true) {
-
+    // Vulkan cleanup
+    {
+        vkDestroySemaphore(logicalDevice, renderFinishedSemaphore, nullptr);
+        vkDestroySemaphore(logicalDevice, imageAvailableSemaphore, nullptr);
+        vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
+        for (auto framebuffer : framebuffers) {
+                vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
+        }
+        vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
+        vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
+        vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
+        for (auto imageView : swapchainImageViews) {
+            vkDestroyImageView(logicalDevice, imageView, nullptr);
+        }
+        destroyVkDebugUtilsMessenger(instance, debugMessenger);
+        vkDestroySwapchainKHR(logicalDevice, swapchain, nullptr);
+        vkDestroyDevice(logicalDevice, nullptr);
+        vkDestroySurfaceKHR(instance, surface, nullptr);
+        vkDestroyInstance(instance, nullptr);
     }
+
+    
 
     return EXIT_SUCCESS;
 }

@@ -3,12 +3,18 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+    
+    typedef struct MacOsApp {
+        void* nsViewController;
+        void* caMetalLayer;
+        void* nsWindow;
+    } MacOsApp;
 
-void createMacOsApp (void (*initHandler)(void*, void*), void (*updateHandler)(void*));
+    MacOsApp createMacOsApp (void (*updateHandler)(void*));
 
-void setUserData(void* pWindow, void* userDataPtr);
+    void setUserData(const MacOsApp* macOsApp, void* userDataPtr);
 
-void initVulkan(void* controller, void* caMetalLayer);
+    void runMacOsApp(MacOsApp* macOsApp);
 
 #ifdef __cplusplus
 }
