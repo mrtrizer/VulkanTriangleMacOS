@@ -9,65 +9,15 @@
 #include <unordered_set>
 
 #include "macOSInterface.hpp"
+#include "VulkanUtils.hpp"
+#include "VkInstanceWrap.hpp"
 
-std::unordered_set<std::string> findMissingExtensionNames(const std::vector<VkExtensionProperties>& extensions,
-                                         const std::vector<const char*>& requiredExtensionNames) {
-    std::unordered_set<std::string> missingExtensionNames(requiredExtensionNames.begin(), requiredExtensionNames.end());
-    for (auto extension : extensions)
-        missingExtensionNames.erase(extension.extensionName);
-    return missingExtensionNames;
-}
-
-void ensureRequiredExtensionsPresented(const std::vector<VkExtensionProperties>& extensions,
-                                       const std::vector<const char*>& requiredExtensionNames) {
-    auto missingExtensions = findMissingExtensionNames(extensions, requiredExtensionNames);
-    if (missingExtensions.size() != 0) {
-        std::stringstream ss;
-        ss << "Can't find extensions:  ";
-        for (auto missingExtension : missingExtensions) {
-            ss << missingExtension << ' ';
-        }
-        throw std::runtime_error(ss.str());
-    }
-}
-
-std::vector<VkExtensionProperties> getVkExtensions() {
-    uint32_t extensionCount = 0;
-    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-    std::vector<VkExtensionProperties> extensions(extensionCount);
-    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
-    return extensions;
-}
-
-std::vector<VkLayerProperties> getVkValidationLayers() {
-    uint32_t layerCount;
-    vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
-    std::vector<VkLayerProperties> availableLayers(layerCount);
-    vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
-    return availableLayers;
-}
-
-bool validationLayersAvaliable(const std::vector<VkLayerProperties>& validationLayers,
-                               const std::vector<const char*>& requiredLayerNames) {
-    for (const char* requiredLayerName : requiredLayerNames) {
-        auto predicate = [requiredLayerName](const auto& item) {
-            return strcmp(item.layerName, requiredLayerName) == 0;
-        };
-        if (std::find_if(validationLayers.begin(), validationLayers.end(), predicate) == validationLayers.end())
-            return false;
-    }
-    return true;
-}
-
-VkInstance createVkInstance(const std::vector<const char*>& requiredExtensionNames,
+VkInstanceWrap createVkInstance(const std::vector<const char*>& requiredExtensionNames,
                             const std::vector<const char*>& validationLayerNames) {
-    auto extensions = getVkExtensions();
     std::cout << "available extensions:" << std::endl;
-    for (const auto& extension : extensions)
+    for (const auto& extension : getVkExtensions())
         std::cout << '\t' << extension.extensionName << std::endl;
-
-    ensureRequiredExtensionsPresented(extensions, requiredExtensionNames);
-
+    
     VkApplicationInfo appInfo = {};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = "Hello Triangle";
@@ -76,54 +26,7 @@ VkInstance createVkInstance(const std::vector<const char*>& requiredExtensionNam
     appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     appInfo.apiVersion = VK_API_VERSION_1_0;
 
-    VkInstanceCreateInfo createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    createInfo.pApplicationInfo = &appInfo;
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(requiredExtensionNames.size());
-    createInfo.ppEnabledExtensionNames = requiredExtensionNames.data();
-    createInfo.enabledLayerCount = validationLayerNames.size();
-    createInfo.ppEnabledLayerNames = validationLayerNames.data();
-
-    VkInstance instance;
-    auto result = vkCreateInstance(&createInfo, nullptr, &instance);
-    if (result != VK_SUCCESS) {
-        std::cout << result << std::endl;
-        throw std::runtime_error("failed to create instance!");
-    }
-    return instance;
-}
-
-static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
-    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-    VkDebugUtilsMessageTypeFlagsEXT messageType,
-    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-    void* pUserData) {
-
-    std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
-
-    return VK_FALSE;
-}
-
-VkDebugUtilsMessengerEXT createVkDebugUtilsMessenger(VkInstance instance, PFN_vkDebugUtilsMessengerCallbackEXT callback) {
-    VkDebugUtilsMessengerCreateInfoEXT createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    createInfo.pfnUserCallback = callback;
-    createInfo.pUserData = nullptr; // Optional
-    auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
-    if (func == nullptr)
-        throw std::runtime_error("Can't find CreateDebugUtilsMessengerEXT function");
-    VkDebugUtilsMessengerEXT debugUtilsMessenger;
-    if (func(instance, &createInfo, nullptr, &debugUtilsMessenger) != VK_SUCCESS)
-        throw std::runtime_error("Can't create VkDebugUtilsMessengerEXT");
-    return debugUtilsMessenger;
-}
-
-void destroyVkDebugUtilsMessenger(VkInstance instance, VkDebugUtilsMessengerEXT messenger) {
-    auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
-    if (func != nullptr)
-        func(instance, messenger, nullptr);
+    return VkInstanceWrap(requiredExtensionNames, validationLayerNames, appInfo);
 }
 
 struct QueueFamilyIndices {
@@ -209,15 +112,17 @@ bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, const std::
     std::vector<VkExtensionProperties> extensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, extensions.data());
 
-    bool allExtensionsPresented = findMissingExtensionNames(extensions, requiredExtensionNames).size() == 0;
+//    bool allExtensionsPresented = findMissingExtensionNames(extensions, requiredExtensionNames).size() == 0;
 
     bool swapChainAdequate = false;
-    if (allExtensionsPresented) {
+    //if (allExtensionsPresented) {
         auto swapChainSupport = querySwapChainSupport(device, surface);
         swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
-    }
+    //}
 
-    return findQueueFamilies(device, surface).isComplete() && allExtensionsPresented && swapChainAdequate;
+    return findQueueFamilies(device, surface).isComplete()
+    //&& allExtensionsPresented
+    && swapChainAdequate;
 }
 
 std::vector<VkPhysicalDevice> getVkPhysicalDevices(VkInstance instance) {
@@ -833,30 +738,29 @@ int main(int argc, char* argv[]) {
     std::cout << "Validation layers:" << std::endl;
     for (auto validationLayer : validationLayers)
         std::cout << '\t' << validationLayer.layerName << std::endl;
-    
-    if (!validationLayersAvaliable(getVkValidationLayers(), requiredValidationLayerNames))
-        throw std::runtime_error("Validation layer is not avaliable");
-    
+
     auto requiredInstanceExtensionNames = std::vector<const char*>{ "VK_KHR_surface", "VK_MVK_macos_surface" };
     requiredInstanceExtensionNames.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     std::cout << "Required extensions for instance:" << std::endl;
     for (auto requiredExtensionName : requiredInstanceExtensionNames)
         std::cout << '\t' << requiredExtensionName << std::endl;
-    
-    VkInstance instance;
-    
+
     // Create VK instance
-    instance = createVkInstance(requiredInstanceExtensionNames, requiredValidationLayerNames);
+    auto instance = createVkInstance(requiredInstanceExtensionNames, requiredValidationLayerNames);
     
-    auto debugMessenger = createVkDebugUtilsMessenger(instance, debugCallback);
+    instance.setDebugCallback([](VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+                                 VkDebugUtilsMessageTypeFlagsEXT messageType,
+                                 const VkDebugUtilsMessengerCallbackDataEXT& pCallbackData) {
+        std::cout << pCallbackData.pMessage << std::endl;
+    });
     
     auto macOsApp = createMacOsApp(update);
     
-    auto surface = createVkSDLSurface(macOsApp.caMetalLayer, instance);
+    auto surface = createVkSDLSurface(macOsApp.caMetalLayer, instance.instance());
     
     const std::vector<const char*> deviceRequiredExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SURFACE_EXTENSION_NAME};
     
-    auto physicalDevice = findVkPhysicalDevice(instance, surface, deviceRequiredExtensions);
+    auto physicalDevice = findVkPhysicalDevice(instance.instance(), surface, deviceRequiredExtensions);
     
     auto queueFamilies = findQueueFamilies(physicalDevice, surface);
     
@@ -928,14 +832,10 @@ int main(int argc, char* argv[]) {
         for (auto imageView : swapchainImageViews) {
             vkDestroyImageView(logicalDevice, imageView, nullptr);
         }
-        destroyVkDebugUtilsMessenger(instance, debugMessenger);
         vkDestroySwapchainKHR(logicalDevice, swapchain, nullptr);
         vkDestroyDevice(logicalDevice, nullptr);
-        vkDestroySurfaceKHR(instance, surface, nullptr);
-        vkDestroyInstance(instance, nullptr);
+        vkDestroySurfaceKHR(instance.instance(), surface, nullptr);
     }
-
-    
 
     return EXIT_SUCCESS;
 }
