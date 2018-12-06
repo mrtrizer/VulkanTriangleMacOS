@@ -25,7 +25,7 @@ MacOsApp createMacOsApp (void (*updateHandler)(void*)) {
     id applicationName = [[NSProcessInfo processInfo] processName];
     NSWindow* window = [[NSWindow alloc]
         initWithContentRect:NSMakeRect(100, 100, 640, 640)
-        styleMask:NSTitledWindowMask | NSClosableWindowMask | NSResizableWindowMask
+        styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
         backing:NSBackingStoreBuffered
         defer:NO
     ];

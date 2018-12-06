@@ -11,6 +11,7 @@
 #include "macOSInterface.hpp"
 #include "VulkanUtils.hpp"
 #include "VkInstanceWrap.hpp"
+#include "VkSurfaceWrap.hpp"
 
 VkInstanceWrap createVkInstance(const std::vector<const char*>& requiredExtensionNames,
                             const std::vector<const char*>& validationLayerNames) {
@@ -27,121 +28,6 @@ VkInstanceWrap createVkInstance(const std::vector<const char*>& requiredExtensio
     appInfo.apiVersion = VK_API_VERSION_1_0;
 
     return VkInstanceWrap(requiredExtensionNames, validationLayerNames, appInfo);
-}
-
-struct QueueFamilyIndices {
-    unsigned graphicsFamily = UINT_MAX;
-    unsigned presentFamily = UINT_MAX;
-
-    bool isComplete() const {
-        return graphicsFamily != UINT_MAX && presentFamily != UINT_MAX;
-    }
-
-    std::vector<unsigned> indices() const {
-        return {graphicsFamily, presentFamily};
-    }
-
-    std::unordered_set<unsigned> uniqueIndices() const {
-        auto indicesVector = indices();
-        return {indicesVector.begin(), indicesVector.end()};
-    }
-};
-
-QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) {
-    QueueFamilyIndices indices;
-
-    uint32_t queueFamilyCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
-
-    for (unsigned i = 0; i < queueFamilies.size() && !indices.isComplete(); ++i) {
-        const auto& queueFamily = queueFamilies[i];
-
-        if (queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
-            indices.graphicsFamily = i;
-
-        VkBool32 presentSupport = false;
-        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
-        if (queueFamily.queueCount > 0 && presentSupport)
-            indices.presentFamily = i;
-    }
-
-    return indices;
-}
-
-struct SwapChainSupportDetails {
-    VkSurfaceCapabilitiesKHR capabilities;
-    std::vector<VkSurfaceFormatKHR> formats;
-    std::vector<VkPresentModeKHR> presentModes;
-};
-
-SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device, VkSurfaceKHR surface) {
-    SwapChainSupportDetails details;
-
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
-
-    uint32_t formatCount;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
-
-
-    if (formatCount != 0) {
-        details.formats.resize(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
-    }
-
-    uint32_t presentModeCount;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
-
-    if (presentModeCount != 0) {
-        details.presentModes.resize(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
-    }
-
-    return details;
-}
-
-bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, const std::vector<const char*> requiredExtensionNames) {
-    VkPhysicalDeviceProperties deviceProperties;
-    VkPhysicalDeviceFeatures deviceFeatures;
-    vkGetPhysicalDeviceProperties(device, &deviceProperties);
-    vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
-
-    uint32_t extensionCount;
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
-    std::vector<VkExtensionProperties> extensions(extensionCount);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, extensions.data());
-
-//    bool allExtensionsPresented = findMissingExtensionNames(extensions, requiredExtensionNames).size() == 0;
-
-    bool swapChainAdequate = false;
-    //if (allExtensionsPresented) {
-        auto swapChainSupport = querySwapChainSupport(device, surface);
-        swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
-    //}
-
-    return findQueueFamilies(device, surface).isComplete()
-    //&& allExtensionsPresented
-    && swapChainAdequate;
-}
-
-std::vector<VkPhysicalDevice> getVkPhysicalDevices(VkInstance instance) {
-    uint32_t deviceCount = 0;
-    vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-    std::vector<VkPhysicalDevice> devices(deviceCount);
-    vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
-    return devices;
-}
-
-VkPhysicalDevice findVkPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, const std::vector<const char*> requiredExtensions) {
-    auto physicalDevices = getVkPhysicalDevices(instance);
-
-    for (const auto& physicalDevice : physicalDevices) {
-        if (isDeviceSuitable(physicalDevice, surface, requiredExtensions)) {
-            return physicalDevice;
-        }
-    }
-    throw std::runtime_error("Failed to find a suitable GPU!");
 }
 
 VkDevice createVkLogicalDevice(VkPhysicalDevice physicalDevice,
@@ -185,21 +71,6 @@ VkQueue getVkQueue(VkDevice device, unsigned family, unsigned index) {
     VkQueue queue;
     vkGetDeviceQueue(device, family, index, &queue);
     return queue;
-}
-
-VkSurfaceKHR createVkSDLSurface(void* caMetalLayer, VkInstance instance) {
-    VkSurfaceKHR surface;
-
-    VkMacOSSurfaceCreateInfoMVK createInfo;
-    createInfo.sType = VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK;
-    createInfo.pNext = NULL;
-    createInfo.flags = 0;
-    createInfo.pView = caMetalLayer;
-
-    if (vkCreateMacOSSurfaceMVK(instance, &createInfo, nullptr, &surface) != VK_SUCCESS)
-        throw std::runtime_error("Can't create macos surface");
-
-    return surface;
 }
 
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
@@ -731,9 +602,7 @@ int main(int argc, char* argv[]) {
         "VK_LAYER_GOOGLE_threading",
         "VK_LAYER_GOOGLE_unique_objects"
     };
-    
-    std::cout << __has_feature(objc_arc) << std::endl;
-    
+
     auto validationLayers = getVkValidationLayers();
     std::cout << "Validation layers:" << std::endl;
     for (auto validationLayer : validationLayers)
@@ -755,31 +624,30 @@ int main(int argc, char* argv[]) {
     });
     
     auto macOsApp = createMacOsApp(update);
-    
-    auto surface = createVkSDLSurface(macOsApp.caMetalLayer, instance.instance());
+
+    VkSurfaceWrap surface(macOsApp.caMetalLayer, instance);
     
     const std::vector<const char*> deviceRequiredExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SURFACE_EXTENSION_NAME};
     
-    auto physicalDevice = findVkPhysicalDevice(instance.instance(), surface, deviceRequiredExtensions);
+    auto physicalDevice = instance.findCompatibleDevice(surface, deviceRequiredExtensions);
     
-    auto queueFamilies = findQueueFamilies(physicalDevice, surface);
+    std::cout << "Graphics family index: " << physicalDevice.queueFamilies().graphicsFamily << std::endl;
+    std::cout << "Present family index: " << physicalDevice.queueFamilies().presentFamily << std::endl;
     
-    std::cout << "Graphics family index: " << queueFamilies.graphicsFamily << std::endl;
-    std::cout << "Present family index: " << queueFamilies.presentFamily << std::endl;
-    
-    auto logicalDevice = createVkLogicalDevice(physicalDevice, queueFamilies, requiredValidationLayerNames, deviceRequiredExtensions);
-    
-    SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice, surface);
+    auto logicalDevice = createVkLogicalDevice(physicalDevice.physicalDevice(),
+                                               physicalDevice.queueFamilies(),
+                                               requiredValidationLayerNames,
+                                               deviceRequiredExtensions);
     
     SwapchainSettings swapchainSettings {
-        .surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats),
-        .presentMode = chooseSwapPresentMode(swapChainSupport.presentModes),
-        .extent = chooseSwapExtent(swapChainSupport.capabilities),
-        .imageCount = selectImageCount(swapChainSupport),
-        .transform = swapChainSupport.capabilities.currentTransform,
-        .queueFamilies = queueFamilies
+        .surfaceFormat = chooseSwapSurfaceFormat(physicalDevice.supportDetails().formats),
+        .presentMode = chooseSwapPresentMode(physicalDevice.supportDetails().presentModes),
+        .extent = chooseSwapExtent(physicalDevice.supportDetails().capabilities),
+        .imageCount = selectImageCount(physicalDevice.supportDetails()),
+        .transform = physicalDevice.supportDetails().capabilities.currentTransform,
+        .queueFamilies = physicalDevice.queueFamilies()
     };
-    auto swapchain = createSwapchain(physicalDevice, logicalDevice, surface, swapchainSettings);
+    auto swapchain = createSwapchain(physicalDevice.physicalDevice(), logicalDevice, surface.surface(), swapchainSettings);
     
     auto swapchainImages = getSwapchainImages(logicalDevice, swapchain);
     
@@ -793,7 +661,7 @@ int main(int argc, char* argv[]) {
     
     auto graphicsPipeline = createGraphicsPipeline(logicalDevice, pipelineLayout, renderPass, swapchainSettings.extent);
     
-    auto commandPool = createCommandPool(logicalDevice, queueFamilies);
+    auto commandPool = createCommandPool(logicalDevice, physicalDevice.queueFamilies());
     
     auto commandBuffers = createCommandBuffers(logicalDevice, commandPool, renderPass, graphicsPipeline, framebuffers, swapchainSettings.extent);
     
@@ -806,8 +674,8 @@ int main(int argc, char* argv[]) {
         .commandBuffers = commandBuffers,
         .imageAvailableSemaphore = imageAvailableSemaphore,
         .renderFinishedSemaphore = renderFinishedSemaphore,
-        .graphicsQueue = getVkQueue(logicalDevice, queueFamilies.graphicsFamily, 0),
-        .presentQueue = getVkQueue(logicalDevice, queueFamilies.presentFamily, 0),
+        .graphicsQueue = getVkQueue(logicalDevice, physicalDevice.queueFamilies().graphicsFamily, 0),
+        .presentQueue = getVkQueue(logicalDevice, physicalDevice.queueFamilies().presentFamily, 0),
     };
     
     setUserData(&macOsApp, &updateInfo);
@@ -834,7 +702,7 @@ int main(int argc, char* argv[]) {
         }
         vkDestroySwapchainKHR(logicalDevice, swapchain, nullptr);
         vkDestroyDevice(logicalDevice, nullptr);
-        vkDestroySurfaceKHR(instance.instance(), surface, nullptr);
+        
     }
 
     return EXIT_SUCCESS;

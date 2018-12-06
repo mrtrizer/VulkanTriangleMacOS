@@ -4,6 +4,10 @@
 #include <vector>
 #include <functional>
 
+#include "VkPhysicalDeviceWrap.hpp"
+
+class VkSurfaceWrap;
+
 class VkInstanceWrap {
     friend PFN_vkDebugUtilsMessengerCallbackEXT; // This static function needs access to m_callback
 public:
@@ -25,6 +29,9 @@ public:
     VkInstance instance() const { return m_instance; }
     
     void setDebugCallback(DebugCallback callback) { m_callback = callback; }
+    
+    VkPhysicalDeviceWrap findCompatibleDevice (const VkSurfaceWrap& surface,
+                                               const std::vector<const char*>& requiredExtensions) const;
     
 private:
     VkInstance m_instance;
