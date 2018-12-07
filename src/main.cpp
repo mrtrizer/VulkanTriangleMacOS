@@ -12,6 +12,7 @@
 #include "VulkanUtils.hpp"
 #include "VkInstanceWrap.hpp"
 #include "VkSurfaceWrap.hpp"
+#include "VkDeviceWrap.hpp"
 
 VkInstanceWrap createVkInstance(const std::vector<const char*>& requiredExtensionNames,
                             const std::vector<const char*>& validationLayerNames) {
@@ -30,8 +31,7 @@ VkInstanceWrap createVkInstance(const std::vector<const char*>& requiredExtensio
     return VkInstanceWrap(requiredExtensionNames, validationLayerNames, appInfo);
 }
 
-VkDevice createVkLogicalDevice(VkPhysicalDevice physicalDevice,
-                               QueueFamilyIndices queueFamilies,
+VkDeviceWrap createVkLogicalDevice(const VkPhysicalDeviceWrap& physicalDevice,
                                const std::vector<const char*>& validationLayerNames,
                                const std::vector<const char*>& extensionNames) {
     // Common for all queues
@@ -39,32 +39,17 @@ VkDevice createVkLogicalDevice(VkPhysicalDevice physicalDevice,
 
     // Queues
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-    for (auto familyIndex : queueFamilies.uniqueIndices()){
+    for (auto familyIndex : physicalDevice.queueFamilies().uniqueIndices()){
         VkDeviceQueueCreateInfo& queueCreateInfo = queueCreateInfos.emplace_back();
         queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         queueCreateInfo.queueFamilyIndex = familyIndex;
         queueCreateInfo.queueCount = 1;
         queueCreateInfo.pQueuePriorities = &queuePriority;
     }
+    
+    VkPhysicalDeviceFeatures features;
 
-    // Features
-    VkPhysicalDeviceFeatures deviceFeatures = {};
-
-    // Device
-    VkDeviceCreateInfo createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    createInfo.pQueueCreateInfos = queueCreateInfos.data();
-    createInfo.queueCreateInfoCount = queueCreateInfos.size();
-    createInfo.pEnabledFeatures = &deviceFeatures;
-    createInfo.enabledExtensionCount = extensionNames.size();
-    createInfo.ppEnabledExtensionNames = extensionNames.data();
-    createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayerNames.size());
-    createInfo.ppEnabledLayerNames = validationLayerNames.data();
-
-    VkDevice device;
-    if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS)
-        throw std::runtime_error("Failed to create logical device!");
-    return device;
+    return VkDeviceWrap(physicalDevice, features, validationLayerNames, queueCreateInfos, extensionNames);
 }
 
 VkQueue getVkQueue(VkDevice device, unsigned family, unsigned index) {
@@ -634,10 +619,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Graphics family index: " << physicalDevice.queueFamilies().graphicsFamily << std::endl;
     std::cout << "Present family index: " << physicalDevice.queueFamilies().presentFamily << std::endl;
     
-    auto logicalDevice = createVkLogicalDevice(physicalDevice.physicalDevice(),
-                                               physicalDevice.queueFamilies(),
-                                               requiredValidationLayerNames,
-                                               deviceRequiredExtensions);
+    auto logicalDevice = createVkLogicalDevice(physicalDevice, requiredValidationLayerNames, deviceRequiredExtensions);
     
     SwapchainSettings swapchainSettings {
         .surfaceFormat = chooseSwapSurfaceFormat(physicalDevice.supportDetails().formats),
@@ -647,35 +629,35 @@ int main(int argc, char* argv[]) {
         .transform = physicalDevice.supportDetails().capabilities.currentTransform,
         .queueFamilies = physicalDevice.queueFamilies()
     };
-    auto swapchain = createSwapchain(physicalDevice.physicalDevice(), logicalDevice, surface.surface(), swapchainSettings);
+    auto swapchain = createSwapchain(physicalDevice.physicalDevice(), logicalDevice.device(), surface.surface(), swapchainSettings);
     
-    auto swapchainImages = getSwapchainImages(logicalDevice, swapchain);
+    auto swapchainImages = getSwapchainImages(logicalDevice.device(), swapchain);
     
-    auto swapchainImageViews = createSwapchainImageViews(logicalDevice, swapchainImages, swapchainSettings.surfaceFormat.format);
+    auto swapchainImageViews = createSwapchainImageViews(logicalDevice.device(), swapchainImages, swapchainSettings.surfaceFormat.format);
     
-    auto pipelineLayout = createPipelineLayout(logicalDevice);
+    auto pipelineLayout = createPipelineLayout(logicalDevice.device());
     
-    auto renderPass = createRenderPass(logicalDevice, swapchainSettings.surfaceFormat.format);
+    auto renderPass = createRenderPass(logicalDevice.device(), swapchainSettings.surfaceFormat.format);
     
-    auto framebuffers = createFramebuffers(logicalDevice, renderPass, swapchainImageViews, swapchainSettings.extent);
+    auto framebuffers = createFramebuffers(logicalDevice.device(), renderPass, swapchainImageViews, swapchainSettings.extent);
     
-    auto graphicsPipeline = createGraphicsPipeline(logicalDevice, pipelineLayout, renderPass, swapchainSettings.extent);
+    auto graphicsPipeline = createGraphicsPipeline(logicalDevice.device(), pipelineLayout, renderPass, swapchainSettings.extent);
     
-    auto commandPool = createCommandPool(logicalDevice, physicalDevice.queueFamilies());
+    auto commandPool = createCommandPool(logicalDevice.device(), physicalDevice.queueFamilies());
     
-    auto commandBuffers = createCommandBuffers(logicalDevice, commandPool, renderPass, graphicsPipeline, framebuffers, swapchainSettings.extent);
+    auto commandBuffers = createCommandBuffers(logicalDevice.device(), commandPool, renderPass, graphicsPipeline, framebuffers, swapchainSettings.extent);
     
-    auto imageAvailableSemaphore = createSemaphore(logicalDevice);
-    auto renderFinishedSemaphore = createSemaphore(logicalDevice);
+    auto imageAvailableSemaphore = createSemaphore(logicalDevice.device());
+    auto renderFinishedSemaphore = createSemaphore(logicalDevice.device());
     
     UpdateInfo updateInfo = UpdateInfo {
-        .device = logicalDevice,
+        .device = logicalDevice.device(),
         .swapchain = swapchain,
         .commandBuffers = commandBuffers,
         .imageAvailableSemaphore = imageAvailableSemaphore,
         .renderFinishedSemaphore = renderFinishedSemaphore,
-        .graphicsQueue = getVkQueue(logicalDevice, physicalDevice.queueFamilies().graphicsFamily, 0),
-        .presentQueue = getVkQueue(logicalDevice, physicalDevice.queueFamilies().presentFamily, 0),
+        .graphicsQueue = getVkQueue(logicalDevice.device(), physicalDevice.queueFamilies().graphicsFamily, 0),
+        .presentQueue = getVkQueue(logicalDevice.device(), physicalDevice.queueFamilies().presentFamily, 0),
     };
     
     setUserData(&macOsApp, &updateInfo);
@@ -684,25 +666,23 @@ int main(int argc, char* argv[]) {
     
     setUserData(&macOsApp, nullptr);
 
-    vkDeviceWaitIdle(logicalDevice);
+    vkDeviceWaitIdle(logicalDevice.device());
 
     // Vulkan cleanup
     {
-        vkDestroySemaphore(logicalDevice, renderFinishedSemaphore, nullptr);
-        vkDestroySemaphore(logicalDevice, imageAvailableSemaphore, nullptr);
-        vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
+        vkDestroySemaphore(logicalDevice.device(), renderFinishedSemaphore, nullptr);
+        vkDestroySemaphore(logicalDevice.device(), imageAvailableSemaphore, nullptr);
+        vkDestroyCommandPool(logicalDevice.device(), commandPool, nullptr);
         for (auto framebuffer : framebuffers) {
-                vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
+                vkDestroyFramebuffer(logicalDevice.device(), framebuffer, nullptr);
         }
-        vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
-        vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
-        vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
+        vkDestroyRenderPass(logicalDevice.device(), renderPass, nullptr);
+        vkDestroyPipeline(logicalDevice.device(), graphicsPipeline, nullptr);
+        vkDestroyPipelineLayout(logicalDevice.device(), pipelineLayout, nullptr);
         for (auto imageView : swapchainImageViews) {
-            vkDestroyImageView(logicalDevice, imageView, nullptr);
+            vkDestroyImageView(logicalDevice.device(), imageView, nullptr);
         }
-        vkDestroySwapchainKHR(logicalDevice, swapchain, nullptr);
-        vkDestroyDevice(logicalDevice, nullptr);
-        
+        vkDestroySwapchainKHR(logicalDevice.device(), swapchain, nullptr);
     }
 
     return EXIT_SUCCESS;
