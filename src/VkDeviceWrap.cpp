@@ -7,6 +7,7 @@ VkDeviceWrap::VkDeviceWrap(const VkPhysicalDeviceWrap& physicalDevice,
              const std::vector<const char*>& validationLayerNames,
              const std::vector<VkDeviceQueueCreateInfo>& queueCreateInfos,
              const std::vector<const char*>& extensionNames)
+    : m_physicalDevice(physicalDevice)
 {
     
     VkDeviceCreateInfo createInfo = {};

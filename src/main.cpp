@@ -13,6 +13,7 @@
 #include "VkInstanceWrap.hpp"
 #include "VkSurfaceWrap.hpp"
 #include "VkDeviceWrap.hpp"
+#include "VkSwapchainWrap.hpp"
 
 VkInstanceWrap createVkInstance(const std::vector<const char*>& requiredExtensionNames,
                             const std::vector<const char*>& validationLayerNames) {
@@ -94,58 +95,6 @@ VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
 
         return actualExtent;
     }
-}
-
-struct SwapchainSettings {
-    VkSurfaceFormatKHR surfaceFormat;
-    VkPresentModeKHR presentMode;
-    const VkExtent2D& extent;
-    uint32_t imageCount;
-    VkSurfaceTransformFlagBitsKHR transform;
-    const QueueFamilyIndices& queueFamilies;
-};
-
-VkSwapchainKHR createSwapchain(VkPhysicalDevice physicalDevice,
-                               VkDevice device,
-                               VkSurfaceKHR surface,
-                               const SwapchainSettings& settings)
-{
-
-    VkSwapchainCreateInfoKHR createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    createInfo.surface = surface;
-    createInfo.minImageCount = settings.imageCount;
-    createInfo.imageFormat = settings.surfaceFormat.format;
-    createInfo.imageColorSpace = settings.surfaceFormat.colorSpace;
-    createInfo.imageExtent = settings.extent;
-    createInfo.imageArrayLayers = 1;
-    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-    auto queueFamilyIndices = settings.queueFamilies.indices();
-
-    if (settings.queueFamilies.graphicsFamily != settings.queueFamilies.presentFamily) {
-        createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-        createInfo.queueFamilyIndexCount = queueFamilyIndices.size();
-        createInfo.pQueueFamilyIndices = queueFamilyIndices.data();
-    } else {
-        createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        createInfo.queueFamilyIndexCount = 0; // Optional
-        createInfo.pQueueFamilyIndices = nullptr; // Optional
-    }
-
-    createInfo.preTransform = settings.transform;
-    createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-
-    createInfo.presentMode = settings.presentMode;
-    createInfo.clipped = VK_TRUE;
-    createInfo.oldSwapchain = VK_NULL_HANDLE;
-
-    VkSwapchainKHR swapChain;
-    if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create swap chain!");
-    }
-
-    return swapChain;
 }
 
 uint32_t selectImageCount(const SwapChainSupportDetails& swapChainSupport) {
@@ -386,14 +335,6 @@ VkPipeline createGraphicsPipeline(VkDevice device,
     return graphicsPipeline;
 }
 
-std::vector<VkImage> getSwapchainImages(VkDevice device, VkSwapchainKHR swapchain) {
-    uint32_t imageCount;
-    vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr);
-    std::vector<VkImage> swapchainImages(imageCount);
-    vkGetSwapchainImagesKHR(device, swapchain, &imageCount, swapchainImages.data());
-    return swapchainImages;
-}
-
 std::vector<VkImageView> createSwapchainImageViews( VkDevice logicalDevice,
                                                     const std::vector<VkImage>& swapchainImages,
                                                     VkFormat format)
@@ -626,12 +567,11 @@ int main(int argc, char* argv[]) {
         .presentMode = chooseSwapPresentMode(physicalDevice.supportDetails().presentModes),
         .extent = chooseSwapExtent(physicalDevice.supportDetails().capabilities),
         .imageCount = selectImageCount(physicalDevice.supportDetails()),
-        .transform = physicalDevice.supportDetails().capabilities.currentTransform,
-        .queueFamilies = physicalDevice.queueFamilies()
+        .transform = physicalDevice.supportDetails().capabilities.currentTransform
     };
-    auto swapchain = createSwapchain(physicalDevice.physicalDevice(), logicalDevice.device(), surface.surface(), swapchainSettings);
+    auto swapchain = VkSwapchainWrap(logicalDevice, surface, swapchainSettings);
     
-    auto swapchainImages = getSwapchainImages(logicalDevice.device(), swapchain);
+    auto swapchainImages = swapchain.getSwapchainImages();
     
     auto swapchainImageViews = createSwapchainImageViews(logicalDevice.device(), swapchainImages, swapchainSettings.surfaceFormat.format);
     
@@ -652,7 +592,7 @@ int main(int argc, char* argv[]) {
     
     UpdateInfo updateInfo = UpdateInfo {
         .device = logicalDevice.device(),
-        .swapchain = swapchain,
+        .swapchain = swapchain.swapchain(),
         .commandBuffers = commandBuffers,
         .imageAvailableSemaphore = imageAvailableSemaphore,
         .renderFinishedSemaphore = renderFinishedSemaphore,
@@ -682,7 +622,6 @@ int main(int argc, char* argv[]) {
         for (auto imageView : swapchainImageViews) {
             vkDestroyImageView(logicalDevice.device(), imageView, nullptr);
         }
-        vkDestroySwapchainKHR(logicalDevice.device(), swapchain, nullptr);
     }
 
     return EXIT_SUCCESS;

@@ -12,8 +12,10 @@ public:
     
     ~VkDeviceWrap();
     
-    VkDevice device() { return m_device; }
+    VkDevice device() const { return m_device; }
+    const VkPhysicalDeviceWrap& physicalDevice() const { return m_physicalDevice; }
 
 private:
     VkDevice m_device;
+    const VkPhysicalDeviceWrap& m_physicalDevice;
 };
