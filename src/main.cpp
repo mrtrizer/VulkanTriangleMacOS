@@ -53,7 +53,7 @@ struct Vertex {
     }
 };
 
-const std::vector<Vertex> vertices = {
+std::vector<Vertex> vertices = {
     {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
     {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
     {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
@@ -534,7 +534,7 @@ void update(void* userDataPtr) {
     if (userDataPtr == nullptr)
         return;
     auto updateInfo = *static_cast<UpdateInfo*>(userDataPtr);
-
+    
     uint32_t imageIndex;
     vkAcquireNextImageKHR(updateInfo.device,
                           updateInfo.swapchain,
@@ -643,7 +643,12 @@ int main(int argc, char* argv[]) {
     
     vertexBuffer.copyToMemory(vertices.data(), vertices.size() * sizeof(vertices[0]));
     
-    auto commandBuffers = createCommandBuffers(logicalDevice.device(), commandPool, renderPass, graphicsPipeline, framebuffers, swapchainSettings.extent, vertexBuffer.buffer());
+    auto commandBuffers = createCommandBuffers(logicalDevice.device(),
+                                               commandPool, renderPass,
+                                               graphicsPipeline,
+                                               framebuffers,
+                                               swapchainSettings.extent,
+                                               vertexBuffer.buffer());
     
     auto imageAvailableSemaphore = createSemaphore(logicalDevice.device());
     auto renderFinishedSemaphore = createSemaphore(logicalDevice.device());

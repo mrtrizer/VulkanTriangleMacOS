@@ -34,11 +34,12 @@ VkBufferWrap::VkBufferWrap(VkDevice device, int size, const VkPhysicalDeviceWrap
     if (vkBindBufferMemory(m_device, m_buffer, deviceMemory, 0) != VK_SUCCESS)
         throw std::runtime_error("Failed to bind vertex buffer!");
 
-
+    if (vkMapMemory(m_device, m_deviceMemory, 0, size, 0, &m_mappedMemory) != VK_SUCCESS)
+        throw std::runtime_error("Unable to map memory!");
 }
 
 VkBufferWrap::~VkBufferWrap() {
-    
+    vkUnmapMemory(m_device, m_deviceMemory);
     vkDestroyBuffer(m_device, m_buffer, nullptr);
     vkFreeMemory(m_device, m_deviceMemory, nullptr);
 }
@@ -46,9 +47,7 @@ VkBufferWrap::~VkBufferWrap() {
 void VkBufferWrap::copyToMemory(const void* source, size_t size) {
     if (size > m_size)
         throw std::runtime_error("Data doesn't fit into buffer!");
-    void* mappedMemory;
-    if (vkMapMemory(m_device, m_deviceMemory, 0, size, 0, &mappedMemory) != VK_SUCCESS)
-        throw std::runtime_error("Unable to map memory!");
-    memcpy(mappedMemory, source, size);
-    vkUnmapMemory(m_device, m_deviceMemory);
+
+    memcpy(m_mappedMemory, source, size);
+    
 }

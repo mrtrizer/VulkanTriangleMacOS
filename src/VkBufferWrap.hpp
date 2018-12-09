@@ -17,6 +17,7 @@ public:
 private:
     VkBufferWrap(VkDevice device, int size, const VkPhysicalDeviceWrap& physicalDevice);
 
+    void* m_mappedMemory;
     VkBuffer m_buffer;
     VkDevice m_device;
     VkDeviceMemory m_deviceMemory;
