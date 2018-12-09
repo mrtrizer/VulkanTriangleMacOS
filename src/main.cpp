@@ -510,6 +510,41 @@ std::vector<VkCommandBuffer> createCommandBuffers(VkDevice device,
     return commandBuffers;
 }
 
+void copyBuffer(VkDevice device, VkCommandPool commandPool, VkQueue graphicsQueue, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
+    VkCommandBufferAllocateInfo allocInfo = {};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandPool = commandPool;
+    allocInfo.commandBufferCount = 1;
+    
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+    
+    VkCommandBufferBeginInfo beginInfo = {};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+    
+    VkBufferCopy copyRegion = {};
+    copyRegion.srcOffset = 0; // Optional
+    copyRegion.dstOffset = 0; // Optional
+    copyRegion.size = size;
+    vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+    
+    vkEndCommandBuffer(commandBuffer);
+    
+    VkSubmitInfo submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+    
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(graphicsQueue);
+    
+    vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+}
+
 VkSemaphore createSemaphore(VkDevice device) {
     VkSemaphore semaphore;
     VkSemaphoreCreateInfo semaphoreInfo = {};
@@ -639,16 +674,34 @@ int main(int argc, char* argv[]) {
     
     auto commandPool = createCommandPool(logicalDevice.device(), physicalDevice.queueFamilies());
     
-    auto vertexBuffer = logicalDevice.createVertexBuffer(vertices);
+    auto vertexBuffer = std::make_shared<VkBufferWrap>(logicalDevice,
+                                   sizeof(vertices[0]) * vertices.size(),
+                                   VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    auto vertexBufferController = std::make_shared<HostBufferController>(vertexBuffer);
     
-    vertexBuffer.copyToMemory(vertices.data(), vertices.size() * sizeof(vertices[0]));
+    vertexBufferController->copyToMemory(vertices.data(), vertices.size() * sizeof(vertices[0]));
+    
+    auto deviceVertexBuffer = std::make_shared<VkBufferWrap>(logicalDevice,
+                                                       vertexBuffer->size(),
+                                                       VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                                                       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    
+    auto graphicsQueue = getVkQueue(logicalDevice.device(), physicalDevice.queueFamilies().graphicsFamily, 0);
+    
+    copyBuffer(logicalDevice.device(),
+               commandPool,
+               graphicsQueue,
+               vertexBuffer->buffer(),
+               deviceVertexBuffer->buffer(),
+               vertexBuffer->size());
     
     auto commandBuffers = createCommandBuffers(logicalDevice.device(),
                                                commandPool, renderPass,
                                                graphicsPipeline,
                                                framebuffers,
                                                swapchainSettings.extent,
-                                               vertexBuffer.buffer());
+                                               deviceVertexBuffer->buffer());
     
     auto imageAvailableSemaphore = createSemaphore(logicalDevice.device());
     auto renderFinishedSemaphore = createSemaphore(logicalDevice.device());
@@ -659,7 +712,7 @@ int main(int argc, char* argv[]) {
         .commandBuffers = commandBuffers,
         .imageAvailableSemaphore = imageAvailableSemaphore,
         .renderFinishedSemaphore = renderFinishedSemaphore,
-        .graphicsQueue = getVkQueue(logicalDevice.device(), physicalDevice.queueFamilies().graphicsFamily, 0),
+        .graphicsQueue = graphicsQueue,
         .presentQueue = getVkQueue(logicalDevice.device(), physicalDevice.queueFamilies().presentFamily, 0),
     };
     
