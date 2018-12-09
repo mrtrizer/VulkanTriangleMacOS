@@ -53,10 +53,15 @@ struct Vertex {
     }
 };
 
-std::vector<Vertex> vertices = {
-    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+const std::vector<Vertex> vertices = {
+    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
     {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+};
+
+const std::vector<uint16_t> indices = {
+    0, 1, 2, 2, 3, 0
 };
 
 VkInstanceWrap createVkInstance(const std::vector<const char*>& requiredExtensionNames,
@@ -459,7 +464,8 @@ std::vector<VkCommandBuffer> createCommandBuffers(VkDevice device,
                                                   VkPipeline pipeline,
                                                   const std::vector<VkFramebuffer>& framebuffers,
                                                   const VkExtent2D& extent,
-                                                  VkBuffer vertexBuffer) {
+                                                  VkBuffer vertexBuffer,
+                                                  VkBuffer indexBuffer) {
     const size_t frameNumber = framebuffers.size();
 
     std::vector<VkCommandBuffer> commandBuffers(frameNumber);
@@ -500,7 +506,9 @@ std::vector<VkCommandBuffer> createCommandBuffers(VkDevice device,
         VkDeviceSize offsets[] = {0};
         vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
         
-        vkCmdDraw(commandBuffers[i], static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+        vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+        
+        vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
         vkCmdEndRenderPass(commandBuffers[i]);
         if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
             throw std::runtime_error("failed to record command buffer!");
@@ -674,20 +682,19 @@ int main(int argc, char* argv[]) {
     
     auto commandPool = createCommandPool(logicalDevice.device(), physicalDevice.queueFamilies());
     
+    auto graphicsQueue = getVkQueue(logicalDevice.device(), physicalDevice.queueFamilies().graphicsFamily, 0);
+    
     auto vertexBuffer = std::make_shared<VkBufferWrap>(logicalDevice,
                                    sizeof(vertices[0]) * vertices.size(),
-                                   VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                                   VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    auto vertexBufferController = std::make_shared<HostBufferController>(vertexBuffer);
     
-    vertexBufferController->copyToMemory(vertices.data(), vertices.size() * sizeof(vertices[0]));
+    HostBufferController(vertexBuffer).copyToMemory(vertices.data(), vertexBuffer->size());
     
     auto deviceVertexBuffer = std::make_shared<VkBufferWrap>(logicalDevice,
                                                        vertexBuffer->size(),
                                                        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    
-    auto graphicsQueue = getVkQueue(logicalDevice.device(), physicalDevice.queueFamilies().graphicsFamily, 0);
     
     copyBuffer(logicalDevice.device(),
                commandPool,
@@ -695,13 +702,34 @@ int main(int argc, char* argv[]) {
                vertexBuffer->buffer(),
                deviceVertexBuffer->buffer(),
                vertexBuffer->size());
+
+    
+    auto indicesBuffer = std::make_shared<VkBufferWrap>(logicalDevice,
+                                                      sizeof(indices[0]) * indices.size(),
+                                                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    
+    HostBufferController(indicesBuffer).copyToMemory(indices.data(), indicesBuffer->size());
+    
+    auto deviceIndicesBuffer = std::make_shared<VkBufferWrap>(logicalDevice,
+                                                             indicesBuffer->size(),
+                                                             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                                                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    
+    copyBuffer(logicalDevice.device(),
+               commandPool,
+               graphicsQueue,
+               indicesBuffer->buffer(),
+               deviceIndicesBuffer->buffer(),
+               indicesBuffer->size());
     
     auto commandBuffers = createCommandBuffers(logicalDevice.device(),
                                                commandPool, renderPass,
                                                graphicsPipeline,
                                                framebuffers,
                                                swapchainSettings.extent,
-                                               deviceVertexBuffer->buffer());
+                                               deviceVertexBuffer->buffer(),
+                                               deviceIndicesBuffer->buffer());
     
     auto imageAvailableSemaphore = createSemaphore(logicalDevice.device());
     auto renderFinishedSemaphore = createSemaphore(logicalDevice.device());
