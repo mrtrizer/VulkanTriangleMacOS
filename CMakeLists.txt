@@ -3,10 +3,13 @@ project(TestApp LANGUAGES CXX C)
 
 set(CMAKE_BUILD_TYPE Debug)
 
-# List all sources from all presented sources excluding exclude pathes
-list(APPEND TestApp_SOURCES "./src/macOSInterface.hpp")
-list(APPEND TestApp_SOURCES "./src/macOSInterface.m")
-list(APPEND TestApp_SOURCES "./src/main.cpp")
+file(GLOB TestApp_SOURCES
+    "./src/*.hpp"
+    "./src/*.cpp"
+    "./src/*.m"
+)
+
+message(status "list: ${TestApp_SOURCES}")
 
 add_executable(TestApp ${TestApp_SOURCES})
     
@@ -15,8 +18,9 @@ set (VULKAN_SDK "/Users/deniszdorovtsov/.local/vulkansdk")
 # Pathes for header search
 target_include_directories(TestApp
     PRIVATE
-    "/Users/deniszdorovtsov/Projects/VulkanExperiments/TestApp/src"
+    "./src"
     "${VULKAN_SDK}/macOS/include"
+    "./3dparty/glm"
 )
 
 # All preprocessor defenition from module configuration

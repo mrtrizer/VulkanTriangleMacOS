@@ -7,6 +7,7 @@
 #include <fstream>
 #include <sstream>
 #include <unordered_set>
+#include <array>
 
 #include "macOSInterface.hpp"
 #include "VulkanUtils.hpp"
@@ -14,6 +15,49 @@
 #include "VkSurfaceWrap.hpp"
 #include "VkDeviceWrap.hpp"
 #include "VkSwapchainWrap.hpp"
+
+struct Vec2 {
+    float x;
+    float y;
+};
+
+struct Vec3 {
+    float x;
+    float y;
+    float z;
+};
+
+struct Vertex {
+    Vec2 pos;
+    Vec3 color;
+    
+    static VkVertexInputBindingDescription getBindingDescription() {
+        VkVertexInputBindingDescription bindingDescription = {};
+        bindingDescription.binding = 0;
+        bindingDescription.stride = sizeof(Vertex);
+        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        return bindingDescription;
+    }
+    
+    static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions = {};
+        attributeDescriptions[0].binding = 0;
+        attributeDescriptions[0].location = 0;
+        attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[0].offset = offsetof(Vertex, pos);
+        attributeDescriptions[1].binding = 0;
+        attributeDescriptions[1].location = 1;
+        attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[1].offset = offsetof(Vertex, color);
+        return attributeDescriptions;
+    }
+};
+
+const std::vector<Vertex> vertices = {
+    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+    {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+};
 
 VkInstanceWrap createVkInstance(const std::vector<const char*>& requiredExtensionNames,
                             const std::vector<const char*>& validationLayerNames) {
@@ -48,7 +92,7 @@ VkDeviceWrap createVkLogicalDevice(const VkPhysicalDeviceWrap& physicalDevice,
         queueCreateInfo.pQueuePriorities = &queuePriority;
     }
     
-    VkPhysicalDeviceFeatures features;
+    VkPhysicalDeviceFeatures features {};
 
     return VkDeviceWrap(physicalDevice, features, validationLayerNames, queueCreateInfos, extensionNames);
 }
@@ -221,12 +265,15 @@ VkPipeline createGraphicsPipeline(VkDevice device,
         prepareStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragShaderModule)
     };
 
+    auto bindingDescription = Vertex::getBindingDescription();
+    auto attributeDescriptions = Vertex::getAttributeDescriptions();
+    
     VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 0;
-    vertexInputInfo.pVertexBindingDescriptions = nullptr; // Optional
-    vertexInputInfo.vertexAttributeDescriptionCount = 0;
-    vertexInputInfo.pVertexAttributeDescriptions = nullptr; // Optional
+    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -411,7 +458,8 @@ std::vector<VkCommandBuffer> createCommandBuffers(VkDevice device,
                                                   VkRenderPass renderPass,
                                                   VkPipeline pipeline,
                                                   const std::vector<VkFramebuffer>& framebuffers,
-                                                  const VkExtent2D& extent) {
+                                                  const VkExtent2D& extent,
+                                                  VkBuffer vertexBuffer) {
     const size_t frameNumber = framebuffers.size();
 
     std::vector<VkCommandBuffer> commandBuffers(frameNumber);
@@ -424,7 +472,7 @@ std::vector<VkCommandBuffer> createCommandBuffers(VkDevice device,
     if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
         throw std::runtime_error("Failed to allocate command buffers!");
     }
-
+    
     for (int i = 0; i < frameNumber; ++i) {
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -441,12 +489,18 @@ std::vector<VkCommandBuffer> createCommandBuffers(VkDevice device,
         renderPassInfo.framebuffer = framebuffers[i];
         renderPassInfo.renderArea.offset = {0, 0};
         renderPassInfo.renderArea.extent = extent;
-        VkClearValue clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
+        VkClearValue clearColor;
+        clearColor.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
         renderPassInfo.clearValueCount = 1;
         renderPassInfo.pClearValues = &clearColor;
         vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-        vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
+        
+        VkBuffer vertexBuffers[] = {vertexBuffer};
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
+        
+        vkCmdDraw(commandBuffers[i], static_cast<uint32_t>(vertices.size()), 1, 0, 0);
         vkCmdEndRenderPass(commandBuffers[i]);
         if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
             throw std::runtime_error("failed to record command buffer!");
@@ -585,7 +639,11 @@ int main(int argc, char* argv[]) {
     
     auto commandPool = createCommandPool(logicalDevice.device(), physicalDevice.queueFamilies());
     
-    auto commandBuffers = createCommandBuffers(logicalDevice.device(), commandPool, renderPass, graphicsPipeline, framebuffers, swapchainSettings.extent);
+    auto vertexBuffer = logicalDevice.createVertexBuffer(vertices);
+    
+    vertexBuffer.copyToMemory(vertices.data(), vertices.size() * sizeof(vertices[0]));
+    
+    auto commandBuffers = createCommandBuffers(logicalDevice.device(), commandPool, renderPass, graphicsPipeline, framebuffers, swapchainSettings.extent, vertexBuffer.buffer());
     
     auto imageAvailableSemaphore = createSemaphore(logicalDevice.device());
     auto renderFinishedSemaphore = createSemaphore(logicalDevice.device());
@@ -614,7 +672,7 @@ int main(int argc, char* argv[]) {
         vkDestroySemaphore(logicalDevice.device(), imageAvailableSemaphore, nullptr);
         vkDestroyCommandPool(logicalDevice.device(), commandPool, nullptr);
         for (auto framebuffer : framebuffers) {
-                vkDestroyFramebuffer(logicalDevice.device(), framebuffer, nullptr);
+            vkDestroyFramebuffer(logicalDevice.device(), framebuffer, nullptr);
         }
         vkDestroyRenderPass(logicalDevice.device(), renderPass, nullptr);
         vkDestroyPipeline(logicalDevice.device(), graphicsPipeline, nullptr);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "VkPhysicalDeviceWrap.hpp"
+#include "VkBufferWrap.hpp"
 
 class VkDeviceWrap {
 public:
@@ -15,6 +16,11 @@ public:
     VkDevice device() const { return m_device; }
     const VkPhysicalDeviceWrap& physicalDevice() const { return m_physicalDevice; }
 
+    template <typename T>
+    VkBufferWrap createVertexBuffer(const T& vertices) {
+        return VkBufferWrap(m_device, sizeof(vertices[0]) * vertices.size(), m_physicalDevice);
+    }
+    
 private:
     VkDevice m_device;
     const VkPhysicalDeviceWrap& m_physicalDevice;

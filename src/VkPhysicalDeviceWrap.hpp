@@ -50,6 +50,8 @@ public:
     const VkPhysicalDevice& physicalDevice() const { return m_physicalDevice; }
     const QueueFamilyIndices& queueFamilies() const { return m_queueFamilies; }
     const SwapChainSupportDetails& supportDetails() const { return m_supportDetails; }
+    VkPhysicalDeviceMemoryProperties getMemoryProperties() const;
+    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
     
 private:
     VkPhysicalDevice m_physicalDevice;
